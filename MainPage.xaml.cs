@@ -577,7 +577,6 @@ namespace Notes
             
             canvasContainer.Children.Add(selectionCanvas);
             canvasContainer.Children.Add(inkCanvas);
-            canvasContainer.Children.Add(buttonInsert);
         }
 
         private void drawGridLines()
@@ -608,7 +607,6 @@ namespace Notes
             
             canvasContainer.Children.Add(selectionCanvas);
             canvasContainer.Children.Add(inkCanvas);
-            canvasContainer.Children.Add(buttonInsert);
         }
 
         private void canvasTypeComboChanged(object sender, RoutedEventArgs e)
@@ -627,8 +625,7 @@ namespace Notes
             {
                 canvasContainer.Children.Clear();
                 canvasContainer.Children.Add(selectionCanvas);
-                canvasContainer.Children.Add(inkCanvas);
-                canvasContainer.Children.Add(buttonInsert);       
+                canvasContainer.Children.Add(inkCanvas);     
             }
 
             if(sender != null) saveCanvasType();
@@ -803,7 +800,7 @@ namespace Notes
                     StorageFile file = await StorageApplicationPermissions.FutureAccessList.GetFileAsync(localSettings.Values["lastFileToken"] as string);
                     await loadInk(file);
                 }
-                catch(Exception ex)
+                catch
                 {
                     localSettings.Values["lastFileToken"] = "";
                 }
