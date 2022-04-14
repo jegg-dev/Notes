@@ -14,6 +14,10 @@ using Windows.UI.Xaml.Media;
 using System.IO;
 using Windows.UI;
 using Windows.ApplicationModel.Core;
+using Windows.UI.ViewManagement;
+using Windows.Foundation;
+using Windows.UI.Core;
+using System.Linq;
 
 namespace Notes
 {
@@ -26,6 +30,15 @@ namespace Notes
         private InkActionStack inkStack = new InkActionStack(100);
 
         private bool darkTheme;
+
+        private Polyline lasso;
+        private Rect boundingRect = Rect.Empty;
+        private bool selecting = false;
+        private bool movedSelection = false;
+        private Point dragPoint;
+        private Button selectionDeleteButton;
+
+        private bool strokeAfterSelection = false;
 
         public MainPage()
         {
@@ -45,23 +58,38 @@ namespace Notes
             coreTitleBar.ExtendViewIntoTitleBar = true;
 
             Window.Current.SetTitleBar(appTitleBar);
+            ApplicationView.GetForCurrentView().TitleBar.ButtonBackgroundColor = Colors.Transparent;
 
             readFiles();
 
+            inkCanvas.InkPresenter.InputProcessingConfiguration.RightDragAction = 
+                InkInputRightDragAction.LeaveUnprocessed;
+            // Listen for unprocessed pointer events from modified input.
+            // The input is used to provide selection functionality.
+            inkCanvas.InkPresenter.UnprocessedInput.PointerPressed +=
+                UnprocessedInput_PointerPressed;
+            inkCanvas.InkPresenter.UnprocessedInput.PointerMoved +=
+                UnprocessedInput_PointerMoved;
+            inkCanvas.InkPresenter.UnprocessedInput.PointerReleased +=
+                UnprocessedInput_PointerReleased;
+
+            // Listen for new ink or erase strokes to clean up selection UI.
+            inkCanvas.InkPresenter.StrokeInput.StrokeStarted +=
+                StrokeInput_StrokeStarted;
+            inkCanvas.InkPresenter.StrokesErased +=
+                InkPresenter_StrokesErased;
+
             inkCanvas.InkPresenter.StrokesCollected += (i, e) => { strokeCollected(e); saveInk(); };
             inkCanvas.InkPresenter.StrokesErased += (i, e) => { strokeErased(e); saveInk(); };
+           
             inkCanvas.Loaded += inkLoaded;
             inkToolbar.Loaded += inkLoaded;
-        }
 
-        /*protected override void OnDoubleTapped(DoubleTappedRoutedEventArgs e)
-        {
-            if(e.PointerDeviceType == Windows.Devices.Input.PointerDeviceType.Touch)
-            {
-                buttonZoomReset_Click(null, null);
-            }
-            base.OnDoubleTapped(e);
-        }*/
+            inkToolbar.ActiveToolChanged += (i, e) => { UpdateInkAttributes(); };
+            inkToolbar.InkDrawingAttributesChanged += (i, e) => { UpdateInkAttributes(); };
+
+            //canvasScroll.PointerMoved += (o, a) => { CanvasPointerMoved(a); };
+        }
 
         private void inkLoaded(object sender, RoutedEventArgs e)
         {
@@ -201,6 +229,215 @@ namespace Notes
             }
         }
 
+        private void UpdateInkAttributes()
+        {
+            inkToolbar.InkDrawingAttributes.FitToCurve = true;
+            InkDrawingAttributes ink = inkCanvas.InkPresenter.CopyDefaultDrawingAttributes();
+            ink.ModelerAttributes.PredictionTime = TimeSpan.FromMilliseconds(0);
+            inkCanvas.InkPresenter.UpdateDefaultDrawingAttributes(ink);
+        }
+
+        /*private void CanvasPointerMoved(PointerRoutedEventArgs args)
+        {
+            if(args.Pointer.PointerDeviceType == Windows.Devices.Input.PointerDeviceType.Pen)
+            {
+                buttonInsert.Margin = new Thickness(-buttonInsert.Width, args.GetCurrentPoint(canvasContainer).RawPosition.Y - (buttonInsert.Height / 2), 0, 0);
+            }
+        }*/
+
+        // Handle unprocessed pointer events from modified input.
+        // The input is used to provide selection functionality.
+        // Selection UI is drawn on a canvas under the InkCanvas.
+        private void UnprocessedInput_PointerPressed(
+          InkUnprocessedInput sender, PointerEventArgs args)
+        {
+            //inkCanvas.InkPresenter.IsInputEnabled = false;
+            if(boundingRect.IsEmpty)
+            {
+                // Initialize a selection lasso.
+                lasso = new Polyline()
+                {
+                    Stroke = new SolidColorBrush(darkTheme ? Colors.White : Colors.Gray),
+                    StrokeThickness = 1,
+                    StrokeDashArray = new DoubleCollection() { 5, 2 },
+                };
+
+                lasso.Points.Add(args.CurrentPoint.RawPosition);
+
+                selectionCanvas.Children.Add(lasso);
+
+                selecting = true;
+            }
+        }
+
+        private void UnprocessedInput_PointerMoved(
+          InkUnprocessedInput sender, PointerEventArgs args)
+        {
+            if (!selecting && (boundingRect.Contains(args.CurrentPoint.RawPosition) || movedSelection))
+            {
+                if (!movedSelection)
+                {
+                    movedSelection = true;
+                    dragPoint = args.CurrentPoint.RawPosition;
+                    return;
+                }
+
+                Point pos = args.CurrentPoint.RawPosition;
+                pos.X -= dragPoint.X;
+                pos.Y -= dragPoint.Y;
+
+                boundingRect = inkCanvas.InkPresenter.StrokeContainer.MoveSelected(pos);
+                dragPoint = args.CurrentPoint.RawPosition;
+
+                DrawBoundingRect(true);
+                movedSelection = true;
+            }
+            else if(selecting)
+            {
+                // Add a point to the lasso Polyline object.
+                lasso.Points.Add(args.CurrentPoint.RawPosition);
+            }
+            else
+            {
+                ClearSelection();
+                selecting = false;
+                movedSelection = false;
+            }
+        }
+
+        private void UnprocessedInput_PointerReleased(
+          InkUnprocessedInput sender, PointerEventArgs args)
+        {
+            // Add the final point to the Polyline object and
+            // select strokes within the lasso area.
+            // Draw a bounding box on the selection canvas
+            // around the selected ink strokes.
+            if (selecting)
+            {
+                lasso.Points.Add(args.CurrentPoint.RawPosition);
+
+                boundingRect =
+                  inkCanvas.InkPresenter.StrokeContainer.SelectWithPolyLine(
+                    lasso.Points);
+
+                DrawBoundingRect(false);
+            }
+            else if (movedSelection)
+            {
+                saveInk();
+                DrawBoundingRect(false);
+            }
+            selecting = false;
+            movedSelection = false;
+        }
+
+        // Draw a bounding rectangle, on the selection canvas, encompassing
+        // all ink strokes within the lasso area.
+        private void DrawBoundingRect(bool moving)
+        {
+            // Clear all existing content from the selection canvas.
+            selectionCanvas.Children.Clear();
+
+            // Draw a bounding rectangle only if there are ink strokes
+            // within the lasso area.
+            if (!((boundingRect.Width == 0) ||
+              (boundingRect.Height == 0) ||
+              boundingRect.IsEmpty))
+            {
+                var rectangle = new Rectangle()
+                {
+                    Stroke = new SolidColorBrush(darkTheme ? Colors.White : Colors.Gray),
+                    StrokeThickness = 1,
+                    StrokeDashArray = new DoubleCollection() { 5, 2 },
+                    Width = boundingRect.Width,
+                    Height = boundingRect.Height
+                };
+
+                Canvas.SetLeft(rectangle, boundingRect.X);
+                Canvas.SetTop(rectangle, boundingRect.Y);
+
+                if (!moving)
+                {
+                    if (selectionDeleteButton == null)
+                    {
+                        selectionDeleteButton = new Button();
+                        selectionDeleteButton.Width = 30;
+                        selectionDeleteButton.Height = 30;
+                        selectionDeleteButton.Background = new SolidColorBrush(Colors.Red);
+                        selectionDeleteButton.VerticalAlignment = VerticalAlignment.Top;
+                        selectionDeleteButton.CornerRadius = new CornerRadius(0, 5, 5, 0);
+                        selectionDeleteButton.Click += (x, y) => DeleteSelection();
+                    }
+                    selectionDeleteButton.Margin = new Thickness(boundingRect.X + boundingRect.Width, boundingRect.Y, 0, 0);
+                    canvasContainer.Children.Add(selectionDeleteButton);
+                }
+                else
+                {
+                    canvasContainer.Children.Remove(selectionDeleteButton);
+                }
+
+                selectionCanvas.Children.Add(rectangle);
+            }
+        }
+
+        // Handle new ink or erase strokes to clean up selection UI.
+        private void StrokeInput_StrokeStarted(
+          InkStrokeInput sender, PointerEventArgs args)
+        {
+            if (boundingRect != Rect.Empty)
+            {
+                strokeAfterSelection = true;
+                ClearSelection();
+            }
+        }
+
+        private void InkPresenter_StrokesErased(
+          InkPresenter sender, InkStrokesErasedEventArgs args)
+        {
+            if(boundingRect != Rect.Empty)
+                ClearSelection();
+        }
+
+        // Clean up selection UI.
+        private void ClearSelection()
+        {
+            var strokes = inkCanvas.InkPresenter.StrokeContainer.GetStrokes();
+            foreach (var stroke in strokes)
+            {
+                stroke.Selected = false;
+            }
+            ClearDrawnBoundingRect();
+        }
+
+        private void ClearDrawnBoundingRect()
+        {
+            boundingRect = Rect.Empty;
+            if (selectionCanvas.Children.Any())
+            {
+                selectionCanvas.Children.Clear();
+            }
+            if(selectionDeleteButton != null && selectionDeleteButton.Parent != null)
+            {
+                canvasContainer.Children.Remove(selectionDeleteButton);
+            }
+        }
+
+        private void DeleteSelection()
+        {
+            List<InkStroke> strokes = new List<InkStroke>();
+            foreach(InkStroke stroke in inkCanvas.InkPresenter.StrokeContainer.GetStrokes())
+            {
+                if (stroke.Selected)
+                {
+                    strokes.Add(stroke);
+                }
+            }
+            inkCanvas.InkPresenter.StrokeContainer.DeleteSelected();
+            inkStack.Push(strokes, true);
+            ClearDrawnBoundingRect();
+            saveInk();
+        }
+
         private void buttonToggleTheme(object sender, RoutedEventArgs e)
         {
             darkTheme = !darkTheme;
@@ -212,9 +449,6 @@ namespace Notes
         {
             if (darkTheme)
             {
-                string backgroundCode = "1B1B1B";
-                Color backgroundColor = Tools.GetColorFromHexcode(backgroundCode);
-
                 foreach (InkStroke stroke in inkCanvas.InkPresenter.StrokeContainer.GetStrokes())
                 {
                     if (stroke.DrawingAttributes.Color == Colors.Black)
@@ -224,10 +458,15 @@ namespace Notes
                         stroke.DrawingAttributes = da;
                     }
                 }
-                //canvasContainer.Background = new SolidColorBrush(Colors.Black);
+                
+                Color lowColor = Tools.GetColorFromHexcode("#1b1b1b");
+                Color highColor = Tools.GetColorFromHexcode("#1f1f1f");
+
                 RequestedTheme = ElementTheme.Dark;
-                //drawingCanvas.Background = new SolidColorBrush(backgroundColor);
-                ((SolidColorBrush)Application.Current.Resources["DarkerBackground"]).Color = backgroundColor;
+
+                ((SolidColorBrush)Application.Current.Resources["ContentMaterialLow"]).Color = lowColor;
+                ((SolidColorBrush)Application.Current.Resources["ContentMaterialHigh"]).Color = highColor;
+                ApplicationView.GetForCurrentView().TitleBar.ButtonForegroundColor = Colors.White;
 
                 ((InkToolbarPenButton)inkToolbar.GetToolButton(InkToolbarTool.BallpointPen)).SelectedBrushIndex = 1;
                 ((InkToolbarPencilButton)inkToolbar.GetToolButton(InkToolbarTool.Pencil)).SelectedBrushIndex = 1;
@@ -243,10 +482,15 @@ namespace Notes
                         stroke.DrawingAttributes = da;
                     }
                 }
-                //canvasContainer.Background = new SolidColorBrush(Colors.White);
+
+                Color lowColor = Tools.GetColorFromHexcode("#efefef");
+                Color highColor = Colors.White;
+
                 RequestedTheme = ElementTheme.Light;
-                //drawingCanvas.Background = new SolidColorBrush(Colors.LightGray);
-                ((SolidColorBrush)Application.Current.Resources["DarkerBackground"]).Color = Colors.LightGray;
+
+                ((SolidColorBrush)Application.Current.Resources["ContentMaterialLow"]).Color = lowColor;
+                ((SolidColorBrush)Application.Current.Resources["ContentMaterialHigh"]).Color = highColor;
+                ApplicationView.GetForCurrentView().TitleBar.ButtonForegroundColor = Colors.Black;
 
                 ((InkToolbarPenButton)inkToolbar.GetToolButton(InkToolbarTool.BallpointPen)).SelectedBrushIndex = 0;
                 ((InkToolbarPencilButton)inkToolbar.GetToolButton(InkToolbarTool.Pencil)).SelectedBrushIndex = 0;
@@ -279,7 +523,18 @@ namespace Notes
         
         private void strokeCollected(InkStrokesCollectedEventArgs e)
         {
+            if (strokeAfterSelection && e.Strokes[0].StrokeDuration < TimeSpan.FromMilliseconds(100))
+            {
+                foreach(InkStroke s in e.Strokes)
+                {
+                    s.Selected = true;
+                }
+                inkCanvas.InkPresenter.StrokeContainer.DeleteSelected();
+                strokeAfterSelection = false;
+                return;
+            }
             inkStack.Push(e.Strokes, false);
+            //buttonInsert.Margin = new Thickness(-buttonInsert.Width, e.Strokes[0].BoundingRect.Y, 0, 0);
         }
 
         private void strokeErased(InkStrokesErasedEventArgs e)
@@ -315,11 +570,14 @@ namespace Notes
                 line.Y1 = i;
                 line.X2 = inkCanvas.Width - 10;
                 line.Y2 = i;
-                line.Stroke = new SolidColorBrush(Windows.UI.ColorHelper.FromArgb(255, 200, 200, 200));
+                line.Stroke = new SolidColorBrush(Color.FromArgb(255, 200, 200, 200));
                 line.StrokeThickness = 0.5;
                 canvasContainer.Children.Add(line);
             }
+            
+            canvasContainer.Children.Add(selectionCanvas);
             canvasContainer.Children.Add(inkCanvas);
+            canvasContainer.Children.Add(buttonInsert);
         }
 
         private void drawGridLines()
@@ -332,7 +590,7 @@ namespace Notes
                 line.Y1 = 0;
                 line.X2 = x;
                 line.Y2 = inkCanvas.Height;
-                line.Stroke = new SolidColorBrush(Windows.UI.ColorHelper.FromArgb(255, 200, 200, 200));
+                line.Stroke = new SolidColorBrush(Color.FromArgb(255, 200, 200, 200));
                 line.StrokeThickness = 0.5;
                 canvasContainer.Children.Add(line);
             }
@@ -343,11 +601,14 @@ namespace Notes
                 line.Y1 = y;
                 line.X2 = inkCanvas.Width;
                 line.Y2 = y;
-                line.Stroke = new SolidColorBrush(Windows.UI.ColorHelper.FromArgb(255, 200, 200, 200));
+                line.Stroke = new SolidColorBrush(Color.FromArgb(255, 200, 200, 200));
                 line.StrokeThickness = 0.5;
                 canvasContainer.Children.Add(line);
             }
+            
+            canvasContainer.Children.Add(selectionCanvas);
             canvasContainer.Children.Add(inkCanvas);
+            canvasContainer.Children.Add(buttonInsert);
         }
 
         private void canvasTypeComboChanged(object sender, RoutedEventArgs e)
@@ -365,7 +626,9 @@ namespace Notes
             else
             {
                 canvasContainer.Children.Clear();
+                canvasContainer.Children.Add(selectionCanvas);
                 canvasContainer.Children.Add(inkCanvas);
+                canvasContainer.Children.Add(buttonInsert);       
             }
 
             if(sender != null) saveCanvasType();
@@ -530,12 +793,20 @@ namespace Notes
 
         private async void loadLastInk()
         {
+            updateTheme();
+
             ApplicationDataContainer localSettings = ApplicationData.Current.LocalSettings;
             if (!string.IsNullOrEmpty(localSettings.Values["lastFileToken"] as string))
             {
-                StorageFile file = await StorageApplicationPermissions.FutureAccessList.GetFileAsync(localSettings.Values["lastFileToken"] as string);
-                await loadInk(file);
-                updateTheme();
+                try
+                {
+                    StorageFile file = await StorageApplicationPermissions.FutureAccessList.GetFileAsync(localSettings.Values["lastFileToken"] as string);
+                    await loadInk(file);
+                }
+                catch(Exception ex)
+                {
+                    localSettings.Values["lastFileToken"] = "";
+                }
             }
         }
 

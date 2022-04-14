@@ -7,7 +7,7 @@
     x:Name="Main"
     mc:Ignorable="d">
 
-    <Grid x:Name="gridBackground" Background="{ThemeResource SystemControlAcrylicElementBrush}">
+    <Grid x:Name="gridBackground" Background="{ThemeResource SystemControlAcrylicWindowBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -21,7 +21,7 @@
             <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
 
-        <Grid x:Name="appTitleBar" Grid.Row="0" Grid.ColumnSpan="3" Background="{ThemeResource SystemControlAcrylicElementBrush}">
+        <Grid x:Name="appTitleBar" Grid.Row="0" Grid.ColumnSpan="3" Background="Transparent">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="LeftPaddingColumn" Width="0"/>
                 <ColumnDefinition/>
@@ -29,6 +29,7 @@
             </Grid.ColumnDefinitions>
             <Image Source="Assets/Square24x24Logo.targetsize-256.png" 
                    Grid.Column="1"
+                   VerticalAlignment="Center"
                    HorizontalAlignment="Left"
                    Width="20" Height="20"
                    Margin="4,2,0,0"/>
@@ -37,18 +38,18 @@
             Style="{StaticResource CaptionTextBlockStyle}" 
             Grid.Column="1"
             VerticalAlignment="Center"
-            Margin="24,5,0,5"/>
+            Margin="24,6,0,5"/>
         </Grid>
 
-        <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Background="{ThemeResource SystemControlAcrylicElementBrush}">
+        <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Background="Transparent">
             <Button x:Name="buttonNotesShow"
-                    Background="{ThemeResource SystemControlAcrylicElementMediumHighBrush}"
                     Click="toggleNotesPanel"
-                    CornerRadius="0,5,5,0"
-                    Width="50"
-                    Height="50"
-                    Margin="0,0,0,0"
-                    Content="| | |"/>
+                    CornerRadius="5"
+                    Width="40"
+                    Height="40"
+                    Margin="5,0,0,0"
+                    Content=">"
+                    FontSize="20"/>
             <TextBlock x:Name="saveIcon"
                     Text="Saving..."
                     Width="100"
@@ -59,9 +60,8 @@
                     Margin="5,10,0,10"/>
         </StackPanel>
 
-
         <StackPanel x:Name="ToolPanel" Grid.Row="1" Grid.Column="2" CornerRadius="5" BorderBrush="Gray" Orientation="Horizontal" HorizontalAlignment="Center"
-                    Background="{ThemeResource SystemControlAcrylicElementMediumHighBrush}" Margin="0,5,0,5">
+                    Background="Transparent" Margin="0,0,0,0">
             <!--<ScrollViewer Grid.Row="1" Grid.Column="2" HorizontalScrollMode="Auto" VerticalScrollMode="Disabled" HorizontalScrollBarVisibility="Hidden" Margin="0, 5, 0, 5">-->
             <InkToolbar x:Name="inkToolbar"
                             CornerRadius="5"
@@ -125,43 +125,42 @@
                          Margin="10,0,10,0"/>
         </StackPanel>
 
-        <Grid x:Name="notesPanel" Grid.Row="1" Grid.RowSpan="3" Grid.Column="0" Width="300" Background="{ThemeResource SystemControlAcrylicElementBrush}" Visibility="Collapsed" CornerRadius="0,5,5,0" Margin="0,5,0,5">
+        <Grid x:Name="notesPanel" Grid.Row="1" Grid.RowSpan="3" Grid.Column="0" Width="300" Background="Transparent" Visibility="Collapsed">
             <Grid x:Name="notesContainer" VerticalAlignment="Top" HorizontalAlignment="Left">
                 <StackPanel Orientation="Vertical" Width="300">
                     <StackPanel Orientation="Horizontal" Width="300">
                         <Button x:Name="buttonNotesHide"
                                 Click="toggleNotesPanel"
-                                Background="{ThemeResource SystemControlAcrylicElementMediumHighBrush}"
-                                Width="50"
-                                Height="50"
+                                Width="40"
+                                Height="40"
                                 Margin="5,5,0,5"
-                                Content="| | |"
+                                Content='&lt;'
+                                FontSize="20"
                                 Visibility="Collapsed"/>
                         <Button x:Name="buttonSave"
-                                Background="{ThemeResource SystemControlAcrylicElementMediumHighBrush}"
                                 Content="Save"
                                 Click="buttonSave_ClickAsync"
-                                Width="80"
+                                Width="50"
                                 CornerRadius="5"
-                                Margin="5,5,0,5"/>
+                                Margin="5,0,0,0"/>
                         <Button x:Name="buttonLoad"
-                                Background="{ThemeResource SystemControlAcrylicElementMediumHighBrush}"
                                 Content="Load"
                                 Click="buttonLoad_ClickAsync"
-                                Width="80"
+                                Width="50"
                                 CornerRadius="5"
-                                Margin="5,5,0,5"/>
+                                Margin="5,0,0,0"/>
                     </StackPanel>
-                    <StackPanel Background="{ThemeResource SystemControlAcrylicElementMediumHighBrush}" Orientation="Vertical" CornerRadius="5" Margin="5,0,5,0">
-                        <ListBox x:Name="notesList" SelectionChanged="noteSelected" Background="{ThemeResource SystemControlAcrylicElementBrush}"/>
+                    <StackPanel Orientation="Vertical" CornerRadius="10" Margin="5,0,5,0">
+                        <ListBox x:Name="notesList" SelectionChanged="noteSelected" Background="{ThemeResource ContentMaterialLow}"/>
                     </StackPanel>
                 </StackPanel>
             </Grid>
         </Grid>
 
-        <Grid x:Name="drawingCanvas" Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Background="{ThemeResource SystemControlAcrylicElementBrush}">
-            <ScrollViewer x:Name="canvasScroll" Grid.Row="2" Grid.Column="2" HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Auto" ZoomMode="Enabled" Margin="0, 0, 0, 0">
-                <Grid x:Name="canvasContainer" Grid.Row="2" Grid.Column="2" VerticalAlignment="Top" HorizontalAlignment="Center" BorderThickness="0.5" BorderBrush="Gray" Background="{ThemeResource SystemControlAcrylicElementMediumHighBrush}">
+        <Grid x:Name="drawingCanvas" Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Background="{ThemeResource ContentMaterialLow}" CornerRadius="10,10,0,0">
+            <ScrollViewer x:Name="canvasScroll" Grid.Row="2" Grid.Column="2" HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Auto" ZoomMode="Enabled">
+                <Grid x:Name="canvasContainer" Grid.Row="2" Grid.Column="2" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,10,0,10" BorderThickness="0.5" BorderBrush="Gray" Background="{ThemeResource ContentMaterialHigh}">
+                    <Canvas x:Name="selectionCanvas"/>
                     <InkCanvas x:Name="inkCanvas" Width="1000" Height="1000"/>
                 </Grid>
             </ScrollViewer>

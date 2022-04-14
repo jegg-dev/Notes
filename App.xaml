@@ -26,7 +26,8 @@ THE SOFTWARE.
 
     <Application.Resources>
         <ResourceDictionary>
-            <SolidColorBrush x:Key="DarkerBackground" Color="LightGray"/>
+            <SolidColorBrush x:Key="ContentMaterialLow" Color="#1b1b1b"/>
+            <SolidColorBrush x:Key="ContentMaterialHigh" Color="#1f1f1f"/>
 
             <Style TargetType="InkToolbarBallpointPenButton">
                 <Setter Property="CornerRadius" Value="5"/>
