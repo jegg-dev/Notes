@@ -11,6 +11,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
@@ -27,110 +28,117 @@
                 <ColumnDefinition/>
                 <ColumnDefinition x:Name="RightPaddingColumn" Width="0"/>
             </Grid.ColumnDefinitions>
-            <Image Source="Assets/Square24x24Logo.targetsize-256.png" 
+            <Image Source="Assets/Square24x24Logo.targetsize-256.png"
                    Grid.Column="1"
                    VerticalAlignment="Center"
                    HorizontalAlignment="Left"
-                   Width="20" Height="20"
-                   Margin="4,2,0,0"/>
+                   Width="30" Height="30"
+                   Margin="8,6,0,0"/>
             <TextBlock x:Name="appTitleTextBlock"
-            Text="Notes"
-            Style="{StaticResource CaptionTextBlockStyle}" 
-            Grid.Column="1"
-            VerticalAlignment="Center"
-            Margin="24,6,0,5"/>
+                       Grid.Column="1"
+                       Text="Notes"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       VerticalAlignment="Center"
+                       Margin="44,4,0,0"/>
+            <TextBlock x:Name="saveIcon"
+                       Grid.Column="1"
+                       Margin="80,10,0,0"
+                       Text="..."
+                       Visibility="Collapsed"/>
         </Grid>
 
-        <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Background="Transparent">
+        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Background="Transparent">
             <Button x:Name="buttonNotesShow"
-                    Click="toggleNotesPanel"
+                    Click="ToggleNotesPanel"
                     CornerRadius="5"
                     Width="40"
                     Height="40"
                     Margin="5,0,0,0"
                     Content=">"
                     FontSize="20"/>
-            <TextBlock x:Name="saveIcon"
-                    Text="Saving..."
-                    Width="100"
-                    VerticalAlignment="Center"
-                    HorizontalAlignment="Left"
-                    TextAlignment="Center"
-                    Visibility="Collapsed"
-                    Margin="5,10,0,10"/>
         </StackPanel>
-
-        <StackPanel x:Name="ToolPanel" Grid.Row="1" Grid.Column="2" CornerRadius="5" BorderBrush="Gray" Orientation="Horizontal" HorizontalAlignment="Center"
-                    Background="Transparent" Margin="0,0,0,0">
-            <!--<ScrollViewer Grid.Row="1" Grid.Column="2" HorizontalScrollMode="Auto" VerticalScrollMode="Disabled" HorizontalScrollBarVisibility="Hidden" Margin="0, 5, 0, 5">-->
-            <InkToolbar x:Name="inkToolbar"
+        
+        <ScrollViewer Grid.Row="1" Grid.Column="2" HorizontalScrollMode="Auto" VerticalScrollMode="Disabled" HorizontalScrollBarVisibility="Hidden">
+            <StackPanel x:Name="toolPanelUpper" Orientation="Horizontal" Margin="0,0,0,0" HorizontalAlignment="Center">
+                <InkToolbar x:Name="inkToolbar"
                             CornerRadius="5"
                             Margin="10,5,10,5"
                             TargetInkCanvas="{x:Bind inkCanvas}"
-                            EraseAllClicked="inkCleared"/>
-            <Button x:Name="buttonUndo"
+                            EraseAllClicked="InkCleared"/>
+                <Button x:Name="buttonUndo"
                         Content="Undo"
-                        Click="buttonUndo_Click"
+                        Click="ButtonUndo_Click"
                         Width="75"
                         Margin="5,0,0,0"/>
-            <Button x:Name="buttonRedo"
+                <Button x:Name="buttonRedo"
                         Content="Redo"
-                        Click="buttonRedo_Click"
+                        Click="ButtonRedo_Click"
                         Width="75"
                         Margin="5,0,0,0"/>
-            <Button x:Name="buttonZoomReset"
+                <Button x:Name="buttonZoomReset"
                         Content="Zoom 100"
-                        Click="buttonZoomReset_Click"
+                        Click="ButtonZoomReset_Click"
                         Width="85"
                         Margin="10,0,0,0"/>
-            <Button x:Name="buttonThemeChange"
+                <Button x:Name="buttonThemeChange"
                         Content="Theme"
-                        Click="buttonToggleTheme"
+                        Click="ButtonToggleTheme"
                         Width="70"
                         Margin="10,0,0,0"/>
-            <Button x:Name="buttonLeftAlign"
+                <Button x:Name="buttonLeftAlign"
                         Content="L"
-                        Click="buttonLeftAlign_ClickAsync"
+                        Click="ButtonLeftAlign_Click"
                         Width="35"
                         Margin="10,0,0,0"/>
-            <Button x:Name="buttonCenterAlign"
+                <Button x:Name="buttonCenterAlign"
                         Content="C"
-                        Click="buttonCenterAlign_ClickAsync"
+                        Click="ButtonCenterAlign_Click"
                         Width="35"
                         Margin="5,0,0,0"/>
-            <Button x:Name="buttonRightAlign"
+                <Button x:Name="buttonRightAlign"
                         Content="R"
-                        Click="buttonRightAlign_ClickAsync"
+                        Click="ButtonRightAlign_Click"
                         Width="35"
-                        Margin="5,0,0,0"/>
-            <ComboBox x:Name="canvasTypeCombo" SelectedIndex="0" Width="100" Margin="10,0,0,0" VerticalAlignment="Center" BorderThickness="0.5" Text="Canvas Type" SelectionChanged="canvasTypeComboChanged">
-                <ComboBoxItem x:Name="canvasType_Ruled" Content="Ruled"/>
-                <ComboBoxItem x:Name="canvasType_Grid" Content="Grid"/>
-                <ComboBoxItem x:Name="canvasType_None" Content="None"/>
-            </ComboBox>
-
-            <TextBox x:Name="canvasXInput"
-                         TextChanged="resizeCanvas"
+                        Margin="5,0,10,0"/>
+                <ComboBox x:Name="canvasTypeCombo" SelectedIndex="0" Width="100" Margin="10,0,0,0" VerticalAlignment="Center" BorderThickness="0.5" Text="Canvas Type" SelectionChanged="CanvasTypeComboChanged">
+                    <ComboBoxItem x:Name="canvasType_Ruled" Content="Ruled"/>
+                    <ComboBoxItem x:Name="canvasType_Grid" Content="Grid"/>
+                    <ComboBoxItem x:Name="canvasType_None" Content="None"/>
+                </ComboBox>
+                <TextBox x:Name="canvasXInput"
+                         TextChanged="TriggerResizeCanvas"
                          Height="32"
                          TextAlignment="Left"
                          BorderThickness="0.5"
                          PlaceholderText="X"
-                         Margin="10,0,0,0"/>
-            <TextBox x:Name="canvasYInput"
-                         TextChanged="resizeCanvas"
+                         Margin="10,0,0,0"
+                         Visibility="Collapsed"/>
+                <TextBox x:Name="canvasYInput"
+                         TextChanged="TriggerResizeCanvas"
                          Height="32"
                          TextAlignment="Left"
                          BorderThickness="0.5"
                          PlaceholderText="Y"
-                         Margin="10,0,10,0"/>
-        </StackPanel>
+                         Margin="10,0,10,0"
+                         Visibility="Collapsed"/>
+            </StackPanel>
+        </ScrollViewer>
+        <!--<StackPanel x:Name="toolPanelLower" Grid.Row="2" Grid.Column="2" CornerRadius="5" BorderBrush="Gray" Orientation="Horizontal" HorizontalAlignment="Center"
+                    Background="Transparent" Margin="0,0,0,0">
+            <StackPanel Orientation="Horizontal" CornerRadius="10" BorderBrush="Gray" Background="{ThemeResource ContentMaterialLow}" HorizontalAlignment="Center" Margin="0,0,0,10">
+                <Button Content="Rectangle"
+                    Click="ButtonZoomReset_Click"
+                    Width="90"
+                    Margin="5,5,5,5"/>
+            </StackPanel>
+        </StackPanel>-->
 
-        <Grid x:Name="notesPanel" Grid.Row="1" Grid.RowSpan="3" Grid.Column="0" Width="300" Background="Transparent" Visibility="Collapsed">
+        <Grid x:Name="notesPanel" Grid.Row="1" Grid.RowSpan="4" Grid.Column="0" Width="300" Background="Transparent" Visibility="Collapsed">
             <Grid x:Name="notesContainer" VerticalAlignment="Top" HorizontalAlignment="Left">
                 <StackPanel Orientation="Vertical" Width="300">
                     <StackPanel Orientation="Horizontal" Width="300">
                         <Button x:Name="buttonNotesHide"
-                                Click="toggleNotesPanel"
+                                Click="ToggleNotesPanel"
                                 Width="40"
                                 Height="40"
                                 Margin="5,5,0,5"
@@ -139,27 +147,28 @@
                                 Visibility="Collapsed"/>
                         <Button x:Name="buttonSave"
                                 Content="Save"
-                                Click="buttonSave_ClickAsync"
+                                Click="ButtonSave_Click"
                                 Width="50"
                                 CornerRadius="5"
                                 Margin="5,0,0,0"/>
                         <Button x:Name="buttonLoad"
                                 Content="Load"
-                                Click="buttonLoad_ClickAsync"
+                                Click="ButtonLoad_Click"
                                 Width="50"
                                 CornerRadius="5"
                                 Margin="5,0,0,0"/>
                     </StackPanel>
-                    <StackPanel Orientation="Vertical" CornerRadius="10" Margin="5,0,5,0">
-                        <ListBox x:Name="notesList" SelectionChanged="noteSelected" Background="{ThemeResource ContentMaterialLow}"/>
+                    <StackPanel Orientation="Vertical" CornerRadius="5" Margin="5,0,5,0" BorderBrush="Gray" BorderThickness="0.5">
+                        <ListBox x:Name="notesList" SelectionChanged="NoteSelected" Background="{ThemeResource ContentMaterialLow}"/>
                     </StackPanel>
                 </StackPanel>
             </Grid>
         </Grid>
 
-        <Grid x:Name="drawingCanvas" Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Background="{ThemeResource ContentMaterialLow}" CornerRadius="10,10,0,0">
-            <ScrollViewer x:Name="canvasScroll" Grid.Row="2" Grid.Column="2" HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Auto" ZoomMode="Enabled">
-                <Grid x:Name="canvasContainer" Grid.Row="2" Grid.Column="2" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,10,0,10" BorderThickness="0.5" BorderBrush="Gray" Background="{ThemeResource ContentMaterialHigh}">
+        <Grid x:Name="drawingCanvas" Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Background="{ThemeResource ContentMaterialLow}" CornerRadius="0,0,0,0" BorderBrush="Gray" BorderThickness="0,0.5,0,0">
+            <ScrollViewer x:Name="canvasScroll" HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Auto" ZoomMode="Enabled">
+                <Grid x:Name="canvasContainer" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="10,10,10,10" BorderThickness="0.5" BorderBrush="Gray" Background="{ThemeResource ContentMaterialHigh}" MaxWidth="1000" MaxHeight="1000">
+                    <Canvas x:Name="backgroundCanvas"/>
                     <Canvas x:Name="selectionCanvas"/>
                     <InkCanvas x:Name="inkCanvas" Width="1000" Height="1000"/>
                 </Grid>
