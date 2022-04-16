@@ -616,13 +616,13 @@ namespace Notes
                 return;
             }
             inkStack.Push(e.Strokes, false);
-            ResizeCanvas(canvasContainer.MaxWidth, 1000 + inkCanvas.InkPresenter.StrokeContainer.BoundingRect.Height);
+            //ResizeCanvas(canvasContainer.MaxWidth, 1000 + inkCanvas.InkPresenter.StrokeContainer.BoundingRect.Height);
         }
 
         private void StrokesErased(InkStrokesErasedEventArgs e)
         {
             inkStack.Push(e.Strokes, true);
-            ResizeCanvas(canvasContainer.MaxWidth, 1000 + inkCanvas.InkPresenter.StrokeContainer.BoundingRect.Height);
+            //ResizeCanvas(canvasContainer.MaxWidth, 1000 + inkCanvas.InkPresenter.StrokeContainer.BoundingRect.Height);
         }
 
         private void ButtonUndo_Click(object sender, RoutedEventArgs e)
@@ -1067,6 +1067,7 @@ namespace Notes
                 // File couldn't be saved.
             }
 
+            ResizeCanvas(canvasContainer.MaxWidth, 1000 + inkCanvas.InkPresenter.StrokeContainer.BoundingRect.Height);
             saveIcon.Visibility = Visibility.Collapsed;
             saving = false;
         }
