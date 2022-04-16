@@ -17,7 +17,6 @@ using Windows.UI.ViewManagement;
 using Windows.Foundation;
 using Windows.UI.Core;
 using System.Linq;
-using Windows.UI.Xaml.Input;
 
 namespace Notes
 {
@@ -35,7 +34,6 @@ namespace Notes
         private Rect boundingRect = Rect.Empty;
         private bool selecting = false;
         private bool movedSelection = false;
-        private bool pressedAfterSelection = false;
         private Point dragPoint;
         private Button selectionDeleteButton;
 
@@ -143,8 +141,7 @@ namespace Notes
 
                     try
                     {
-                        //StorageFile fileTemp = await ApplicationData.Current.LocalFolder.GetFileAsync(System.IO.Path.GetFileName(s));
-                        StorageFile fileTemp = await StorageApplicationPermissions.FutureAccessList.GetFileAsync((string)ApplicationData.Current.LocalSettings.Values[s]);
+                        StorageFile fileTemp = await ApplicationData.Current.LocalFolder.GetFileAsync(System.IO.Path.GetFileName(s));
                     }
                     catch (Exception e)
                     {
@@ -152,10 +149,6 @@ namespace Notes
                         if (files.Contains(s))
                         {
                             files.Remove(s);
-                        }
-                        if (ApplicationData.Current.LocalSettings.Values.ContainsKey(s))
-                        {
-                            ApplicationData.Current.LocalSettings.Values.Remove(s);
                         }
                         continue;
                     }
@@ -174,9 +167,7 @@ namespace Notes
                 await WriteFiles();
                 if (validLaunchFile)
                 {
-                    string faToken = StorageApplicationPermissions.FutureAccessList.Add(App.LaunchFile);
-                    ApplicationData.Current.LocalSettings.Values[App.LaunchFile.Path] = faToken;
-                    StorageFile launchFile = await StorageApplicationPermissions.FutureAccessList.GetFileAsync(faToken);
+                    StorageFile launchFile = await StorageFile.GetFileFromPathAsync(App.LaunchFile.Path);
                     await LoadInk(launchFile);
                 }
                 else
@@ -332,74 +323,6 @@ namespace Notes
             }
             selecting = false;
             movedSelection = false;
-        }
-
-        private void CanvasPointerPressed(PointerRoutedEventArgs args)
-        {
-            if (args.Pointer.PointerDeviceType == Windows.Devices.Input.PointerDeviceType.Pen)
-            {
-                Debug.WriteLine("pressed");
-                pressedAfterSelection = true;
-            }
-        }
-
-        private void CanvasPointerMoved(PointerRoutedEventArgs args)
-        {
-            if (!pressedAfterSelection) return;
-
-            if (args.Pointer.PointerDeviceType == Windows.Devices.Input.PointerDeviceType.Pen)
-            {
-                Debug.WriteLine("moved");
-                UnprocessedInput_PointerMoved(null, null, args.GetCurrentPoint(inkCanvas).RawPosition);
-                /*if (!selecting && (boundingRect.Contains(args.GetCurrentPoint(inkCanvas).RawPosition) || movedSelection))
-                {
-                    if (!movedSelection)
-                    {
-                        movedSelection = true;
-                        dragPoint = args.GetCurrentPoint(inkCanvas).RawPosition;
-                        return;
-                    }
-
-                    Point pos = args.GetCurrentPoint(inkCanvas).RawPosition;
-                    pos.X -= dragPoint.X;
-                    pos.Y -= dragPoint.Y;
-
-                    //ClearDrawnBoundingRect();
-
-                    boundingRect = inkCanvas.InkPresenter.StrokeContainer.MoveSelected(pos);
-                    dragPoint = args.GetCurrentPoint(inkCanvas).RawPosition;
-
-                    DrawBoundingRect(true);
-
-                    movedSelection = true;
-                }
-                else
-                {
-                    ClearSelection();
-                    selecting = false;
-                    movedSelection = false;
-                }*/
-            }
-        }
-
-        private void CanvasPointerReleased(PointerRoutedEventArgs args)
-        {
-            if (!pressedAfterSelection) return;
-
-            if (args.Pointer.PointerDeviceType == Windows.Devices.Input.PointerDeviceType.Pen)
-            {
-                Debug.WriteLine("released");
-                UnprocessedInput_PointerReleased(null, null);
-                /*if (movedSelection)
-                {
-                    SaveInk();
-                    DrawBoundingRect(false);
-                }
-                selecting = false;
-                movedSelection = false;
-                pressedAfterSelection = false;*/
-                pressedAfterSelection = false;
-            }
         }
 
         private void DrawBoundingRect(bool moving)
@@ -902,9 +825,8 @@ namespace Notes
                 ResizeCanvas(canvasContainer.MaxWidth, 1000 + inkCanvas.InkPresenter.StrokeContainer.BoundingRect.Height);
 
                 ApplicationDataContainer localSettings = ApplicationData.Current.LocalSettings;
-                localSettings.Values["lastFileToken"] = StorageApplicationPermissions.FutureAccessList.Add(file);
-
-                localSettings.Values[file.Path] = (string)localSettings.Values["lastFileToken"];
+                string token = StorageApplicationPermissions.FutureAccessList.Add(file);
+                localSettings.Values["lastFileToken"] = token;
 
                 if (!files.Contains(file.Path))
                 {
