@@ -17,6 +17,7 @@ using Windows.UI.ViewManagement;
 using Windows.Foundation;
 using Windows.UI.Core;
 using System.Linq;
+using Windows.UI.Xaml.Input;
 
 namespace Notes
 {
@@ -31,13 +32,13 @@ namespace Notes
         private bool darkTheme;
 
         private Polyline lasso;
+        private Line lassoConnectLine;
         private Rect boundingRect = Rect.Empty;
         private bool selecting = false;
         private bool movedSelection = false;
         private Point dragPoint;
-        private Button selectionDeleteButton;
-
-        private bool strokeAfterSelection = false;
+        private StackPanel selectionPanel;
+        private StackPanel rightTapPanel;
 
         public MainPage()
         {
@@ -49,7 +50,6 @@ namespace Notes
             Window.Current.SetTitleBar(appTitleBar);
             ApplicationView.GetForCurrentView().TitleBar.ButtonBackgroundColor = Colors.Transparent;
 
-            //UPDATES THEME AFTER LOADING INK
             ReadFiles();
 
             inkCanvas.InkPresenter.InputProcessingConfiguration.RightDragAction = 
@@ -99,124 +99,52 @@ namespace Notes
         private async void ReadFiles()
         {
             files = new List<string>();
-            StorageFile file = null;
-            try
+            IReadOnlyList<StorageFile> localFiles = await ApplicationData.Current.LocalFolder.GetFilesAsync();
+            
+            foreach(StorageFile f in localFiles)
             {
-                file = await ApplicationData.Current.LocalFolder.GetFileAsync("filePaths.txt");
-            }
-            catch
-            {
-                Debug.Write("Error opening filePaths.txt");
+                if(f.FileType == ".note")
+                    AddFile(f.Path);
             }
 
-            List<string> tempFiles = new List<string>();
-
-            if (file != null)
+            bool validLaunchFile = false;
+            if (App.LaunchFile != null)
             {
-                var stream = await file.OpenAsync(FileAccessMode.Read);
-                ulong size = stream.Size;
+                AddFile(App.LaunchFile.Path);
+                validLaunchFile = true;
+            }
 
-                using (var inputStream = stream.GetInputStreamAt(0))
-                {
-                    using (var dataReader = new DataReader(inputStream))
-                    {
-                        uint numBytesLoaded = await dataReader.LoadAsync((uint)size);
-                        string text = dataReader.ReadString(numBytesLoaded);
-                        string[] arr = text.Split('\n');
-                        for (int i = 0; i < arr.Length; i++)
-                        {
-                            arr[i] = arr[i].Replace("\n", String.Empty);
-                            arr[i] = arr[i].Replace("\r", String.Empty);
-                        }
-                        tempFiles.AddRange(arr);
-                        dataReader.Dispose();
-                    }
-                    inputStream.Dispose();
-                }
-                stream.Dispose();
-                
-                foreach (string s in tempFiles)
-                {
-                    if (string.IsNullOrEmpty(s) || files.Contains(s)) { continue; }
-
-                    try
-                    {
-                        StorageFile fileTemp = await ApplicationData.Current.LocalFolder.GetFileAsync(System.IO.Path.GetFileName(s));
-                    }
-                    catch (Exception e)
-                    {
-                        Debug.WriteLine(e.Message);
-                        if (files.Contains(s))
-                        {
-                            files.Remove(s);
-                        }
-                        continue;
-                    }
-
-                    await AddFile(s, false);
-                    files.Add(s);
-                }
-
-                bool validLaunchFile = false;
-                if (App.LaunchFile != null)
-                {
-                    await AddFile(App.LaunchFile.Path, true);
-                    validLaunchFile = true;
-                }
-
-                await WriteFiles();
-                if (validLaunchFile)
-                {
-                    StorageFile launchFile = await StorageFile.GetFileFromPathAsync(App.LaunchFile.Path);
-                    await LoadInk(launchFile);
-                }
-                else
-                {
-                    await LoadLastInk();
-                }
-
-                UpdateTheme();
+            if (validLaunchFile)
+            {
+                StorageFile launchFile = await StorageFile.GetFileFromPathAsync(App.LaunchFile.Path);
+                await LoadInk(launchFile, false);
+            }
+            else if(files.Count > 0)
+            {
+                await LoadLastInk();
             }
         }
 
-        private async Task WriteFiles()
+        private void AddFile(string path)
         {
-            StorageFile file = await ApplicationData.Current.LocalFolder.CreateFileAsync("filePaths.txt",
-                CreationCollisionOption.ReplaceExisting);
-
-            CachedFileManager.DeferUpdates(file);
-            // Open a file stream for writing.
-            var stream = await file.OpenAsync(FileAccessMode.ReadWrite);
-            // Write the ink strokes to the output stream.
-            using (IOutputStream outputStream = stream.GetOutputStreamAt(0))
-            {
-                StreamWriter sw = new StreamWriter(outputStream.AsStreamForWrite());
-                foreach(string s in files)
-                {
-                    await sw.WriteLineAsync(s);
-                }
-                await sw.FlushAsync();
-                sw.Close();
-            }
-            stream.Dispose();
-
-            // Finalize write so other apps can update file.
-            Windows.Storage.Provider.FileUpdateStatus status =
-                await CachedFileManager.CompleteUpdatesAsync(file);
-
-            //await FileIO.WriteLinesAsync(file, files);
-        }
-
-        private async Task AddFile(string path, bool addToList)
-        {
-            if (addToList && files.Contains(path)) { return; }
+            if (files.Contains(path)) { return; }
             ListBoxItem item = new ListBoxItem();
             item.Content = System.IO.Path.GetFileNameWithoutExtension(path);
             notesList.Items.Add(item);
-            if (addToList)
+            files.Add(path);
+            notesListContainer.Visibility = Visibility.Visible;
+        }
+
+        private void RemoveFile(string path)
+        {
+            if(!files.Contains(path)) { return; }
+            int index = files.IndexOf(path);
+            files.RemoveAt(index);
+            notesList.Items.RemoveAt(index);
+            notesList.SelectedIndex = 0;
+            if(files.Count == 0)
             {
-                files.Add(path);
-                await WriteFiles();
+                notesListContainer.Visibility = Visibility.Collapsed;
             }
         }
 
@@ -228,11 +156,36 @@ namespace Notes
             inkCanvas.InkPresenter.UpdateDefaultDrawingAttributes(ink);
         }
 
+        protected override void OnRightTapped(RightTappedRoutedEventArgs e)
+        {
+            base.OnRightTapped(e);
+            if(boundingRect.IsEmpty)
+                ShowRightTapPanel(e.GetPosition(canvasContainer));
+        }
+
+        protected override void OnTapped(TappedRoutedEventArgs e)
+        {
+            base.OnTapped(e);
+            if (!boundingRect.IsEmpty)
+            {
+                ClearSelection();
+            }
+            if (rightTapPanel != null && rightTapPanel.Parent != null)
+            {
+                canvasContainer.Children.Remove(rightTapPanel);
+            }
+        }
+
         private void UnprocessedInput_PointerPressed(
           InkUnprocessedInput sender, PointerEventArgs args)
         {
+            if (rightTapPanel != null && rightTapPanel.Parent != null)
+            {
+                canvasContainer.Children.Remove(rightTapPanel);
+            }
+
             //inkCanvas.InkPresenter.IsInputEnabled = false;
-            if(!boundingRect.IsEmpty && !boundingRect.Contains(args.CurrentPoint.RawPosition))
+            if (!boundingRect.IsEmpty && !boundingRect.Contains(args.CurrentPoint.RawPosition))
             {
                 ClearSelection();
                 movedSelection = false;
@@ -274,13 +227,14 @@ namespace Notes
                 Point pos = point;
                 pos.X -= dragPoint.X;
                 pos.Y -= dragPoint.Y;
-                
+
                 //ClearDrawnBoundingRect();
-
-                boundingRect = inkCanvas.InkPresenter.StrokeContainer.MoveSelected(pos);
-                dragPoint = point;
-
-                DrawBoundingRect(true);
+                if (boundingRect.X + pos.X + boundingRect.Width <= inkCanvas.Width && boundingRect.X + pos.X >= 0 && boundingRect.Y + pos.Y + boundingRect.Height <= inkCanvas.Height && boundingRect.Y + pos.Y >= 0)
+                {
+                    boundingRect = inkCanvas.InkPresenter.StrokeContainer.MoveSelected(pos);
+                    dragPoint = point;
+                    DrawBoundingRect(true);
+                }
                 
                 movedSelection = true;
             }
@@ -288,6 +242,16 @@ namespace Notes
             {
                 // Add a point to the lasso Polyline object.
                 lasso.Points.Add(point);
+                if(lassoConnectLine == null)
+                {
+                    lassoConnectLine = new Line();
+                    lassoConnectLine.Stroke = new SolidColorBrush(darkTheme ? Colors.White : Colors.Gray);
+                    selectionCanvas.Children.Add(lassoConnectLine);
+                }
+                lassoConnectLine.X1 = lasso.Points[0].X;
+                lassoConnectLine.Y1 = lasso.Points[0].Y;
+                lassoConnectLine.X2 = lasso.Points[lasso.Points.Count - 1].X;
+                lassoConnectLine.Y2 = lasso.Points[lasso.Points.Count - 1].Y;
             }
             else
             {
@@ -306,7 +270,7 @@ namespace Notes
             // around the selected ink strokes.
             if (selecting)
             {
-                //lasso.Points.Add(args.CurrentPoint.RawPosition);
+                lasso.Points.Add(args.CurrentPoint.RawPosition);
 
                 boundingRect =
                   inkCanvas.InkPresenter.StrokeContainer.SelectWithPolyLine(
@@ -329,6 +293,7 @@ namespace Notes
         {
             // Clear all existing content from the selection canvas.
             selectionCanvas.Children.Clear();
+            lassoConnectLine = null;
 
             // Draw a bounding rectangle only if there are ink strokes
             // within the lasso area.
@@ -350,27 +315,81 @@ namespace Notes
 
                 if (!moving)
                 {
-                    if (selectionDeleteButton == null)
-                    {
-                        selectionDeleteButton = new Button();
-                        selectionDeleteButton.Width = 30;
-                        selectionDeleteButton.Height = 30;
-                        selectionDeleteButton.Background = new SolidColorBrush(Colors.Red);
-                        selectionDeleteButton.VerticalAlignment = VerticalAlignment.Top;
-                        selectionDeleteButton.CornerRadius = new CornerRadius(0, 5, 5, 0);
-                        selectionDeleteButton.Click += (x, y) => DeleteSelection();
-                    }
-                    selectionDeleteButton.Margin = new Thickness(boundingRect.X + boundingRect.Width, boundingRect.Y, 0, 0);
-                    if(!canvasContainer.Children.Contains(selectionDeleteButton))
-                        canvasContainer.Children.Add(selectionDeleteButton);
+                    ShowSelectionPanel();
                 }
                 else
                 {
-                    canvasContainer.Children.Remove(selectionDeleteButton);
+                    canvasContainer.Children.Remove(selectionPanel);
                 }
 
                 selectionCanvas.Children.Add(rectangle);
             }
+        }
+
+        private void ShowSelectionPanel()
+        {
+            selectionPanel = MakePanel(75, 40);
+
+            Button deleteButton = MakePanelButton(new SolidColorBrush(Colors.Red), new Thickness(0, 0, 5, 0));
+            deleteButton.Click += (x, y) => DeleteSelection();
+            selectionPanel.Children.Add(deleteButton);
+
+            Button copyButton = MakePanelButton(new SolidColorBrush(Colors.Blue), new Thickness(0, 0, 0, 0));
+            copyButton.Click += (x, y) => inkCanvas.InkPresenter.StrokeContainer.CopySelectedToClipboard();
+            selectionPanel.Children.Add(copyButton);
+
+            selectionPanel.Margin = new Thickness(boundingRect.X + (boundingRect.Width / 2) - (selectionPanel.Width / 2), boundingRect.Y - selectionPanel.Height, 0, 0);
+
+            if (!canvasContainer.Children.Contains(selectionPanel))
+                canvasContainer.Children.Add(selectionPanel);
+        }
+
+        private void ShowRightTapPanel(Point point)
+        {
+            if(rightTapPanel != null)
+            {
+                canvasContainer.Children.Remove(rightTapPanel);
+            }
+
+            rightTapPanel = MakePanel(40, 40);
+
+            Button pasteButton = MakePanelButton(new SolidColorBrush(Colors.Purple), new Thickness(0,0,0,0));
+            pasteButton.Click += delegate { 
+                if(inkCanvas.InkPresenter.StrokeContainer.CanPasteFromClipboard()) 
+                    inkCanvas.InkPresenter.StrokeContainer.PasteFromClipboard(point); 
+            };
+            rightTapPanel.Children.Add(pasteButton);
+
+            rightTapPanel.Margin = new Thickness(point.X, point.Y - rightTapPanel.Height, 0, 0);
+
+            canvasContainer.Children.Add(rightTapPanel);
+        }
+
+        private StackPanel MakePanel(int width, int height)
+        {
+            StackPanel panel = new StackPanel();
+            panel.Orientation = Orientation.Horizontal;
+            panel.Background = (SolidColorBrush)Application.Current.Resources["ContentMaterialLow"];
+            panel.CornerRadius = new CornerRadius(5);
+            panel.VerticalAlignment = VerticalAlignment.Top;
+            panel.HorizontalAlignment = HorizontalAlignment.Left;
+            panel.Width = width;
+            panel.Height = height;
+            panel.Padding = new Thickness(5, 5, 5, 5);
+            return panel;
+        }
+
+        private Button MakePanelButton(SolidColorBrush background, Thickness margin)
+        {
+            Button button = new Button();
+            button.Width = 30;
+            button.Height = 30;
+            button.Margin = margin;
+            button.Background = background;
+            button.CornerRadius = new CornerRadius(5, 5, 5, 5);
+            button.VerticalAlignment = VerticalAlignment.Center;
+            button.HorizontalAlignment = HorizontalAlignment.Center;
+            return button;
         }
 
         private void StrokeInput_StrokeStarted(
@@ -378,16 +397,25 @@ namespace Notes
         {
             if (boundingRect != Rect.Empty)
             {
-                strokeAfterSelection = true;
                 ClearSelection();
+            }
+            if(rightTapPanel != null && rightTapPanel.Parent != null)
+            {
+                canvasContainer.Children.Remove(rightTapPanel);
             }
         }
 
         private void InkPresenter_StrokesErased(
           InkPresenter sender, InkStrokesErasedEventArgs args)
         {
-            if(boundingRect != Rect.Empty)
+            if (boundingRect != Rect.Empty)
+            {
                 ClearSelection();
+            }
+            if (rightTapPanel != null && rightTapPanel.Parent != null)
+            {
+                canvasContainer.Children.Remove(rightTapPanel);
+            }
         }
 
         private void ClearSelection()
@@ -408,9 +436,9 @@ namespace Notes
             {
                 selectionCanvas.Children.Clear();
             }
-            if(selectionDeleteButton != null && selectionDeleteButton.Parent != null)
+            if(selectionPanel != null && selectionPanel.Parent != null)
             {
-                canvasContainer.Children.Remove(selectionDeleteButton);
+                canvasContainer.Children.Remove(selectionPanel);
             }
         }
 
@@ -512,23 +540,42 @@ namespace Notes
 
         private async void NoteSelected(object sender, RoutedEventArgs e)
         {
-            string path = files[notesList.SelectedIndex];
-            StorageFile file = null;
-            if (ApplicationData.Current.LocalSettings.Values.ContainsKey(path))
-            {
-                file = await StorageApplicationPermissions.FutureAccessList.GetFileAsync((string)ApplicationData.Current.LocalSettings.Values[path]);
-            }
-            else
+            if(notesList.SelectedIndex < 0 || notesList.SelectedIndex > notesList.Items.Count)
             {
                 return;
             }
-            canvasScroll.ChangeView(0, 0, 1.0f);
-            await LoadInk(file);
+            string path = files[notesList.SelectedIndex];
+            try
+            {
+                StorageFile file = await ApplicationData.Current.LocalFolder.GetFileAsync(System.IO.Path.GetFileName(path));
+                canvasScroll.ChangeView(0, 0, 1.0f);
+                await LoadInk(file, false);
+            }
+            catch
+            {
+                RemoveFile(path);
+                Debug.WriteLine("Error selecting note at " + path);
+            }
+        }
+
+        private void SetNoteSelected(string fileName)
+        {
+            notesList.SelectionChanged -= NoteSelected;
+            for (int i = 0; i < files.Count; i++)
+            {
+                if(System.IO.Path.GetFileName(files[i]) == fileName)
+                {
+                    notesList.SelectedIndex = i;
+                    notesList.SelectionChanged += NoteSelected;
+                    return;
+                }
+            }
+            notesList.SelectionChanged += NoteSelected;
         }
         
         private void StrokesCollected(InkStrokesCollectedEventArgs e)
         {
-            if (strokeAfterSelection && e.Strokes[0].StrokeDuration < TimeSpan.FromMilliseconds(100))
+            /*if (strokeAfterSelection && e.Strokes[0].StrokeDuration < TimeSpan.FromMilliseconds(100))
             {
                 foreach(InkStroke s in e.Strokes)
                 {
@@ -537,7 +584,7 @@ namespace Notes
                 inkCanvas.InkPresenter.StrokeContainer.DeleteSelected();
                 strokeAfterSelection = false;
                 return;
-            }
+            }*/
             inkStack.Push(e.Strokes, false);
             //ResizeCanvas(canvasContainer.MaxWidth, 1000 + inkCanvas.InkPresenter.StrokeContainer.BoundingRect.Height);
         }
@@ -609,7 +656,25 @@ namespace Notes
             }
         }
 
-        private void CanvasTypeComboChanged(object sender, RoutedEventArgs e)
+        private void DrawDots()
+        {
+            backgroundCanvas.Children.Clear();
+
+            for (int x = 35; x < inkCanvas.Width; x += 35)
+            {
+                Line line = new Line();
+                line.X1 = x;
+                line.Y1 = 35;
+                line.X2 = x;
+                line.Y2 = inkCanvas.Height - 35;
+                line.Stroke = new SolidColorBrush(Color.FromArgb(255, 200, 200, 200));
+                line.StrokeThickness = 2;
+                line.StrokeDashArray = new DoubleCollection() { 1, 17.5 };
+                backgroundCanvas.Children.Add(line);
+            }
+        }
+
+        private async void CanvasTypeComboChanged(object sender, RoutedEventArgs e)
         {
             if (canvasContainer == null) { return; }
 
@@ -621,12 +686,16 @@ namespace Notes
             {
                 DrawRuledLines();
             }
+            else if(canvasTypeCombo.SelectedItem == canvasType_Dotted)
+            {
+                DrawDots();
+            }
             else
             {
                 backgroundCanvas.Children.Clear();
             }
 
-            if(sender != null) SaveCanvasType();
+            if(sender != null) await SaveCanvasType();
         }
         
         private void TriggerResizeCanvas(object sender, RoutedEventArgs e)
@@ -649,7 +718,9 @@ namespace Notes
         private void ResizeCanvas(double width, double height)
         {
             width = Math.Clamp(width, 500, 10000);
+            width = Math.Floor(width / 35.0) * 35.0;
             height = Math.Clamp(height, 500, 50000);
+            height = Math.Floor(height / 35.0) * 35.0;
             inkCanvas.Width = width;
             inkCanvas.Height = height;
             canvasContainer.MaxWidth = width;
@@ -675,6 +746,44 @@ namespace Notes
         private void ButtonZoomReset_Click(object sender, RoutedEventArgs e)
         {
             canvasScroll.ChangeView(canvasScroll.HorizontalOffset, canvasScroll.VerticalOffset, 1.0f);
+        }
+
+        private async void ButtonNew_Click(object sender, RoutedEventArgs e)
+        {
+            string fileName = newNoteNameBox.Text;
+            if (!string.IsNullOrEmpty(fileName))
+            {
+                foreach(char c in System.IO.Path.GetInvalidFileNameChars())
+                {
+                    if (fileName.Contains(c))
+                    {
+                        newNoteNameBox.Text = "Invalid name...";
+                        return;
+                    }
+                }
+            }
+            else
+            {
+                newNoteNameBox.PlaceholderText = "Enter note name...";
+                return;
+            }
+
+            try
+            {
+                StorageFile file = await ApplicationData.Current.LocalFolder.CreateFileAsync(fileName + ".note");
+                ApplicationData.Current.LocalSettings.Values["lastFileToken"] = StorageApplicationPermissions.FutureAccessList.Add(file);
+                await LoadInk(file, true);
+                inkCanvas.InkPresenter.StrokeContainer.Clear();
+                canvasTypeCombo.SelectedIndex = 0;
+                //ResizeCanvas(1000, 1000);
+                CanvasTypeComboChanged(null, null);
+                await SaveCanvasType();
+                SaveInk();
+            }
+            catch
+            {
+                Debug.WriteLine("Error making new file " + fileName);
+            }
         }
 
         private async void ButtonSave_Click(object sender, RoutedEventArgs e)
@@ -711,11 +820,6 @@ namespace Notes
                     {
                         localSettings.Values["fileToken"] = StorageApplicationPermissions.FutureAccessList.Add(file);
                     }
-
-                    /*BinaryFormatter bf = new BinaryFormatter();
-                    Stream stream = await file.OpenStreamForWriteAsync();
-                    bf.Serialize(stream, inkCanvas.InkPresenter.StrokeContainer.GetStrokes());
-                    stream.Dispose();*/
 
                     // Prevent updates to the file until updates are 
                     // finalized with call to CompleteUpdatesAsync.
@@ -770,7 +874,7 @@ namespace Notes
             openPicker.FileTypeFilter.Add(".note");
             // Show the file picker.
             StorageFile file = await openPicker.PickSingleFileAsync();
-            await LoadInk(file);
+            await LoadInk(file, false);
         }
 
         private async Task LoadLastInk()
@@ -781,21 +885,24 @@ namespace Notes
                 try
                 {
                     StorageFile file = await StorageApplicationPermissions.FutureAccessList.GetFileAsync(localSettings.Values["lastFileToken"] as string);
-                    await LoadInk(file);
+                    await LoadInk(file, false);
                 }
                 catch
                 {
+                    Debug.WriteLine("Failed to load last file");
                     localSettings.Values["lastFileToken"] = "";
                 }
             }
         }
 
-        private async Task LoadInk(StorageFile file)
+        private async Task LoadInk(StorageFile file, bool newFile)
         {
-            if (file != null)
+            if (file != null && !newFile)
             {
                 try
                 {
+                    canvasContainer.Visibility = Visibility.Visible;
+
                     // Open a file stream for reading.
                     IRandomAccessStream stream = await file.OpenAsync(FileAccessMode.Read);
                     // Read from file.
@@ -805,8 +912,10 @@ namespace Notes
                         char[] chars = new char[1];
                         sr.Read(chars, 0, chars.Length);
                         int canvasType = int.Parse(new string(chars));
+                        canvasTypeCombo.SelectionChanged -= CanvasTypeComboChanged;
                         canvasTypeCombo.SelectedIndex = canvasType;
                         CanvasTypeComboChanged(null, null);
+                        canvasTypeCombo.SelectionChanged += CanvasTypeComboChanged;
                         sr.Close();
                     }
                     using (var inputStream = stream.GetInputStreamAt(2))
@@ -817,8 +926,14 @@ namespace Notes
                 } 
                 catch(Exception ex)
                 {
+                    Debug.WriteLine("Failed to load file");
                     Debug.WriteLine(ex.Message);
                     ApplicationData.Current.LocalSettings.Values["lastFileToken"] = "";
+                    if (files.Contains(file.Path))
+                    {
+                        RemoveFile(file.Path);
+                    }
+                    canvasContainer.Visibility = Visibility.Collapsed;
                     return;
                 }
 
@@ -830,14 +945,23 @@ namespace Notes
 
                 if (!files.Contains(file.Path))
                 {
-                    await AddFile(file.Path, true);
+                    AddFile(file.Path);
                 }
+                UpdateTheme();
+                SetNoteSelected(file.Name);
+            }
+            else
+            {
+                ApplicationData.Current.LocalSettings.Values["lastFileToken"] = StorageApplicationPermissions.FutureAccessList.Add(file);
+                AddFile(file.Path);
+                SetNoteSelected(file.Name);
+                canvasContainer.Visibility = Visibility.Visible;
             }
         }
 
         private void InkCleared(InkToolbar toolbar, object sender) { SaveInk(); }
 
-        private async void SaveCanvasType()
+        private async Task SaveCanvasType()
         {
             StorageFile file = null;
             ApplicationDataContainer localSettings = ApplicationData.Current.LocalSettings;
@@ -947,9 +1071,10 @@ namespace Notes
                 try
                 {
                     file = await StorageApplicationPermissions.FutureAccessList.GetFileAsync(localSettings.Values["lastFileToken"] as string);
-                } 
+                }
                 catch(FileNotFoundException e)
                 {
+                    Debug.WriteLine("Failed to save file");
                     Debug.WriteLine(e.Message);
                     localSettings.Values["lastFileToken"] = "";
                 }
