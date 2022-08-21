@@ -1,3 +1,3 @@
-# A Handwriting-Oriented Drawing/Notes App
+# A Lightweight Drawing/Notes App
 
 Developed by Jackson Eggerd
